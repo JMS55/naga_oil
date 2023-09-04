@@ -139,9 +139,11 @@ use crate::{
 pub use self::error::{ComposerError, ComposerErrorInner, ErrSource};
 use self::preprocess::Preprocessor;
 
+pub mod comment_strip_iter;
 pub mod error;
 pub mod preprocess;
 mod test;
+pub mod util;
 
 #[derive(Hash, PartialEq, Eq, Clone, Copy, Debug, Default)]
 pub enum ShaderLanguage {
@@ -807,7 +809,11 @@ impl Composer {
                     Some(recompiled_h) => {
                         if let naga::TypeInner::Struct { members, .. } = &ty.inner {
                             let recompiled_ty = recompiled.types.get_handle(*recompiled_h).unwrap();
-                            let naga::TypeInner::Struct { members: recompiled_members, .. } = &recompiled_ty.inner else {
+                            let naga::TypeInner::Struct {
+                                members: recompiled_members,
+                                ..
+                            } = &recompiled_ty.inner
+                            else {
                                 panic!();
                             };
                             for (member, recompiled_member) in
@@ -1647,7 +1653,7 @@ impl Composer {
                     offset: 0,
                 },
             })?;
-        shader_defs.extend(defines.into_iter());
+        shader_defs.extend(defines);
 
         let PreprocessOutput {
             preprocessed_source,
