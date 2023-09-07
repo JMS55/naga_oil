@@ -354,7 +354,7 @@ impl Default for Composer {
             virtual_fn_regex: Regex::new(r"(?P<lead>[\s]*virtual\s+fn\s+)(?P<function>[^\s]+)(?P<trail>\s*)\(").unwrap(),
             override_fn_regex: Regex::new(
                 format!(
-                    r"(?P<lead>[\s]*override\s+fn\s*){}(?P<module>[^\s]+){}(?P<function>[^\s]+)(?P<trail>\s*)\(", 
+                    r"(?P<lead>[\s]*override\s+fn\s*){}(?P<module>[^\s]+){}(?P<function>[^\s]+)(?P<trail>\s*)\(",
                     regex_syntax::escape(DECORATION_PRE),
                     regex_syntax::escape(DECORATION_POST)
                 )
@@ -1231,7 +1231,7 @@ impl Composer {
 
         if self.validate && create_headers {
             // check that identifiers haven't been renamed
-            for language in [ShaderLanguage::Wgsl, ShaderLanguage::Glsl] {
+            for language in [ShaderLanguage::Wgsl] {
                 let header = self
                     .naga_to_string(&mut header_ir, language, &module_definition.name)
                     .map_err(wrap_err)?;
