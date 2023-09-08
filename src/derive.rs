@@ -24,6 +24,9 @@ pub struct DerivedModule<'a> {
     const_expressions: Rc<RefCell<Arena<Expression>>>,
     globals: Arena<GlobalVariable>,
     functions: Arena<Function>,
+
+    ray_desc: bool,
+    ray_intersection: bool,
 }
 
 impl<'a> DerivedModule<'a> {
@@ -589,6 +592,8 @@ impl<'a> DerivedModule<'a> {
             }
             Expression::RayQueryProceedResult => expr.clone(),
             Expression::RayQueryGetIntersection { query, committed } => {
+                self.ray_desc = true;
+                self.ray_intersection = true;
                 Expression::RayQueryGetIntersection {
                     query: map_expr!(query),
                     committed: *committed,
@@ -737,7 +742,7 @@ impl<'a> DerivedModule<'a> {
 
 impl<'a> From<DerivedModule<'a>> for naga::Module {
     fn from(derived: DerivedModule) -> Self {
-        naga::Module {
+        let mut module = naga::Module {
             types: derived.types,
             constants: derived.constants,
             global_variables: derived.globals,
@@ -747,6 +752,15 @@ impl<'a> From<DerivedModule<'a>> for naga::Module {
             functions: derived.functions,
             special_types: Default::default(),
             entry_points: Default::default(),
+        };
+
+        if derived.ray_desc {
+            module.generate_ray_desc_type();
         }
+        if derived.ray_intersection {
+            module.generate_ray_intersection_type();
+        }
+
+        module
     }
 }
