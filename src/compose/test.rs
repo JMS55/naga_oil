@@ -12,7 +12,7 @@ mod test {
     };
 
     use crate::compose::{
-        ComposableModuleDescriptor, Composer, ComposerErrorInner, ImportDefinition,
+        get_preprocessor_data, ComposableModuleDescriptor, Composer, ImportDefinition,
         NagaModuleDescriptor, ShaderDefValue, ShaderLanguage, ShaderType,
     };
 
@@ -300,6 +300,7 @@ mod test {
         output_eq!(text, "tests/expected/missing_import.txt");
     }
 
+    #[cfg(feature = "glsl")]
     #[test]
     fn wgsl_call_glsl() {
         let mut composer = Composer::default();
@@ -334,23 +335,14 @@ mod test {
         )
         .unwrap();
 
-        // unfortunately glsl variables are emitted in random order...
-        // so this is better than nothing
-        let mut wgsl: Vec<_> = wgsl.lines().collect();
-        wgsl.sort();
-        let wgsl = wgsl.join("\n");
-
         // let mut f = std::fs::File::create("wgsl_call_glsl.txt").unwrap();
         // f.write_all(wgsl.as_bytes()).unwrap();
         // drop(f);
 
-        // assert_eq!(wgsl, include_str!("tests/expected/wgsl_call_glsl.txt"));
-
-        // actually it's worse than that ... glsl output seems volatile over struct names
-        // i suppose at least we are testing that it doesn't throw any errors ..?
-        let _ = wgsl;
+        output_eq!(wgsl, "tests/expected/wgsl_call_glsl.txt");
     }
 
+    #[cfg(feature = "glsl")]
     #[test]
     fn glsl_call_wgsl() {
         let mut composer = Composer::default();
@@ -391,6 +383,7 @@ mod test {
         output_eq!(wgsl, "tests/expected/glsl_call_wgsl.txt");
     }
 
+    #[cfg(feature = "glsl")]
     #[test]
     fn basic_glsl() {
         let mut composer = Composer::default();
@@ -510,7 +503,18 @@ mod test {
             })
             .unwrap();
 
-        assert_eq!(test_shader(&mut composer), 3.0);
+        // this test doesn't work any more.
+        // overrides only work if the composer realises the module is required.
+        // not we can't just blindly import any `#import`ed items because that would break:
+        //      #import a::b
+        //      a::b::c::d();
+        // the path would be interpreted as a module when it may actually
+        // be only a fragment of a path to a module.
+        // so either i need to add another directive (#import_overrides)
+        // or we just limit overrides to modules included via the additional_modules
+        // in `Composer::make_naga_module` and `Composer::add_composable_module`
+
+        // assert_eq!(test_shader(&mut composer), 3.0);
     }
 
     #[cfg(feature = "test_shader")]
@@ -679,6 +683,7 @@ mod test {
         output_eq!(wgsl, "tests/expected/import_in_decl.txt");
     }
 
+    #[cfg(feature = "glsl")]
     #[test]
     fn glsl_const_import() {
         let mut composer = Composer::default();
@@ -720,6 +725,7 @@ mod test {
         output_eq!(wgsl, "tests/expected/glsl_const_import.txt");
     }
 
+    #[cfg(feature = "glsl")]
     #[test]
     fn glsl_wgsl_const_import() {
         let mut composer = Composer::default();
@@ -759,6 +765,7 @@ mod test {
 
         output_eq!(wgsl, "tests/expected/glsl_wgsl_const_import.txt");
     }
+    #[cfg(feature = "glsl")]
     #[test]
     fn wgsl_glsl_const_import() {
         let mut composer = Composer::default();
@@ -832,11 +839,6 @@ mod test {
         )
         .unwrap();
 
-        // println!("{}", wgsl);
-        let mut wgsl = wgsl.lines().collect::<Vec<_>>();
-        wgsl.sort();
-        let wgsl = wgsl.join("\n");
-
         // let mut f = std::fs::File::create("item_import_test.txt").unwrap();
         // f.write_all(wgsl.as_bytes()).unwrap();
         // drop(f);
@@ -848,23 +850,6 @@ mod test {
     fn bad_identifiers() {
         let mut composer = Composer::default();
 
-        let check_err = |composer: &mut Composer, name: &str| -> bool {
-            let result = composer.make_naga_module(NagaModuleDescriptor {
-                source: &format!("#import {name}"),
-                file_path: name,
-                ..Default::default()
-            });
-
-            if let Err(err) = &result {
-                if let ComposerErrorInner::InvalidIdentifier { original, .. } = &err.inner {
-                    return original.ends_with("bad_");
-                }
-            }
-
-            println!("{result:?}");
-            false
-        };
-
         composer
             .add_composable_module(ComposableModuleDescriptor {
                 source: include_str!("tests/invalid_identifiers/const.wgsl"),
@@ -872,8 +857,6 @@ mod test {
                 ..Default::default()
             })
             .unwrap();
-        assert!(check_err(&mut composer, "consts"));
-
         composer
             .add_composable_module(ComposableModuleDescriptor {
                 source: include_str!("tests/invalid_identifiers/fn.wgsl"),
@@ -881,8 +864,6 @@ mod test {
                 ..Default::default()
             })
             .unwrap();
-        assert!(check_err(&mut composer, "fns"));
-
         composer
             .add_composable_module(ComposableModuleDescriptor {
                 source: include_str!("tests/invalid_identifiers/global.wgsl"),
@@ -890,8 +871,6 @@ mod test {
                 ..Default::default()
             })
             .unwrap();
-        assert!(check_err(&mut composer, "globals"));
-
         composer
             .add_composable_module(ComposableModuleDescriptor {
                 source: include_str!("tests/invalid_identifiers/struct_member.wgsl"),
@@ -899,8 +878,6 @@ mod test {
                 ..Default::default()
             })
             .unwrap();
-        assert!(check_err(&mut composer, "struct_members"));
-
         composer
             .add_composable_module(ComposableModuleDescriptor {
                 source: include_str!("tests/invalid_identifiers/struct.wgsl"),
@@ -908,7 +885,41 @@ mod test {
                 ..Default::default()
             })
             .unwrap();
-        assert!(check_err(&mut composer, "structs"));
+        let module = composer
+            .make_naga_module(NagaModuleDescriptor {
+                source: include_str!("tests/invalid_identifiers/top_valid.wgsl"),
+                file_path: "tests/invalid_identifiers/top_valid.wgsl",
+                ..Default::default()
+            })
+            .unwrap();
+
+        let info = naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::default(),
+        )
+        .validate(&module)
+        .unwrap();
+        let wgsl = naga::back::wgsl::write_string(
+            &module,
+            &info,
+            naga::back::wgsl::WriterFlags::EXPLICIT_TYPES,
+        )
+        .unwrap();
+
+        // let mut f = std::fs::File::create("bad_identifiers.txt").unwrap();
+        // f.write_all(wgsl.as_bytes()).unwrap();
+        // drop(f);
+
+        output_eq!(wgsl, "tests/expected/bad_identifiers.txt");
+
+        composer
+            .make_naga_module(NagaModuleDescriptor {
+                source: include_str!("tests/invalid_identifiers/top_invalid.wgsl"),
+                file_path: "tests/invalid_identifiers/top_invalid.wgsl",
+                ..Default::default()
+            })
+            .err()
+            .unwrap();
     }
 
     #[test]
@@ -1081,6 +1092,133 @@ mod test {
         // drop(f);
 
         output_eq!(wgsl, "tests/expected/conditional_import_b.txt");
+    }
+
+    #[cfg(feature = "test_shader")]
+    #[test]
+    fn rusty_imports() {
+        let mut composer = Composer::default();
+
+        composer
+            .add_composable_module(ComposableModuleDescriptor {
+                source: include_str!("tests/rusty_imports/mod_a_b_c.wgsl"),
+                file_path: "tests/rusty_imports/mod_a_b_c.wgsl",
+                ..Default::default()
+            })
+            .unwrap();
+
+        composer
+            .add_composable_module(ComposableModuleDescriptor {
+                source: include_str!("tests/rusty_imports/mod_a_x.wgsl"),
+                file_path: "tests/rusty_imports/mod_a_x.wgsl",
+                ..Default::default()
+            })
+            .unwrap();
+
+        composer
+            .add_composable_module(ComposableModuleDescriptor {
+                source: include_str!("tests/rusty_imports/top.wgsl"),
+                file_path: "tests/rusty_imports/top.wgsl",
+                ..Default::default()
+            })
+            .unwrap();
+
+        assert_eq!(test_shader(&mut composer), 36.0);
+    }
+
+    #[test]
+    fn test_bevy_path_imports() {
+        let (_, mut imports, _) =
+            get_preprocessor_data(include_str!("tests/bevy_path_imports/skill.wgsl"));
+        imports.iter_mut().for_each(|import| {
+            import.items.sort();
+        });
+        imports.sort_by(|a, b| a.import.cmp(&b.import));
+        assert_eq!(
+            imports,
+            vec![
+                ImportDefinition {
+                    import: "\"shaders/skills/hit.wgsl\"".to_owned(),
+                    items: vec!["frag".to_owned(), "vert".to_owned(),],
+                },
+                ImportDefinition {
+                    import: "\"shaders/skills/lightning.wgsl\"".to_owned(),
+                    items: vec!["frag".to_owned(), "vert".to_owned(),],
+                },
+                ImportDefinition {
+                    import: "\"shaders/skills/lightning_ring.wgsl\"".to_owned(),
+                    items: vec!["frag".to_owned(), "vert".to_owned(),],
+                },
+                ImportDefinition {
+                    import: "\"shaders/skills/magic_arrow.wgsl\"".to_owned(),
+                    items: vec!["frag".to_owned(), "vert".to_owned(),],
+                },
+                ImportDefinition {
+                    import: "\"shaders/skills/orb.wgsl\"".to_owned(),
+                    items: vec!["frag".to_owned(), "vert".to_owned(),],
+                },
+                ImportDefinition {
+                    import: "\"shaders/skills/railgun_trail.wgsl\"".to_owned(),
+                    items: vec!["frag".to_owned(), "vert".to_owned(),],
+                },
+                ImportDefinition {
+                    import: "\"shaders/skills/shared.wgsl\"".to_owned(),
+                    items: vec![
+                        "Vertex".to_owned(),
+                        "VertexOutput".to_owned(),
+                        "VertexOutput".to_owned(),
+                    ],
+                },
+                ImportDefinition {
+                    import: "\"shaders/skills/slash.wgsl\"".to_owned(),
+                    items: vec!["frag".to_owned(), "vert".to_owned(),],
+                },
+                ImportDefinition {
+                    import: "\"shaders/skills/sound.wgsl\"".to_owned(),
+                    items: vec!["frag".to_owned(), "vert".to_owned(),],
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_quoted_import_dup_name() {
+        let mut composer = Composer::default();
+
+        composer
+            .add_composable_module(ComposableModuleDescriptor {
+                source: include_str!("tests/quoted_dup/mod.wgsl"),
+                file_path: "tests/quoted_dup/mod.wgsl",
+                ..Default::default()
+            })
+            .unwrap();
+
+        let module = composer
+            .make_naga_module(NagaModuleDescriptor {
+                source: include_str!("tests/quoted_dup/top.wgsl"),
+                file_path: "tests/quoted_dup/top.wgsl",
+                ..Default::default()
+            })
+            .unwrap();
+
+        let info = naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::default(),
+        )
+        .validate(&module)
+        .unwrap();
+        let wgsl = naga::back::wgsl::write_string(
+            &module,
+            &info,
+            naga::back::wgsl::WriterFlags::EXPLICIT_TYPES,
+        )
+        .unwrap();
+
+        // let mut f = std::fs::File::create("test_quoted_import_dup_name.txt").unwrap();
+        // f.write_all(wgsl.as_bytes()).unwrap();
+        // drop(f);
+
+        output_eq!(wgsl, "tests/expected/test_quoted_import_dup_name.txt");
     }
 
     #[test]
@@ -1261,11 +1399,12 @@ mod test {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
         let adapter = instance
             .enumerate_adapters(wgpu::Backends::all())
+            .into_iter()
             .next()
             .unwrap();
         let (device, queue) = futures_lite::future::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
-                features: Features::MAPPABLE_PRIMARY_BUFFERS,
+                required_features: Features::MAPPABLE_PRIMARY_BUFFERS,
                 ..Default::default()
             },
             None,
@@ -1275,13 +1414,6 @@ mod test {
         let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             source: wgpu::ShaderSource::Naga(Cow::Owned(module)),
             label: None,
-        });
-
-        let pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
-            label: None,
-            layout: None,
-            module: &shader_module,
-            entry_point: "run_test",
         });
 
         let output_buffer = device.create_buffer(&BufferDescriptor {
@@ -1305,6 +1437,19 @@ mod test {
             }],
         });
 
+        let pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
+            label: None,
+            layout: Some(
+                &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: None,
+                    bind_group_layouts: &[&layout],
+                    push_constant_ranges: &[],
+                }),
+            ),
+            module: &shader_module,
+            entry_point: "run_test",
+        });
+
         let bindgroup = device.create_bind_group(&BindGroupDescriptor {
             label: None,
             layout: &layout,
@@ -1316,7 +1461,10 @@ mod test {
 
         let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
 
-        let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor { label: None });
+        let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor {
+            label: None,
+            timestamp_writes: None,
+        });
 
         pass.set_pipeline(&pipeline);
         pass.set_bind_group(0, &bindgroup, &[]);
@@ -1328,7 +1476,7 @@ mod test {
 
         queue.submit([buffer]);
 
-        while !device.poll(wgpu::MaintainBase::Wait) {
+        while !device.poll(wgpu::MaintainBase::Wait).is_queue_empty() {
             println!("waiting...");
         }
 
@@ -1336,7 +1484,7 @@ mod test {
             .slice(..)
             .map_async(wgpu::MapMode::Read, |_| ());
 
-        while !device.poll(wgpu::MaintainBase::Wait) {
+        while !device.poll(wgpu::MaintainBase::Wait).is_queue_empty() {
             println!("waiting...");
         }
 

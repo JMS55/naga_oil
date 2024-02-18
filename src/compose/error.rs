@@ -8,10 +8,7 @@ use codespan_reporting::{
 use thiserror::Error;
 use tracing::trace;
 
-use super::{
-    preprocess::{PreprocessOutput, PreprocessorMetaData},
-    Composer, ShaderDefValue,
-};
+use super::{preprocess::PreprocessOutput, Composer, ShaderDefValue};
 use crate::{compose::SPAN_SHIFT, redirect::RedirectError};
 
 #[derive(Debug)]
@@ -42,15 +39,11 @@ impl ErrSource {
                 let raw_source = &composer.module_sets.get(name).unwrap().sanitized_source;
                 let Ok(PreprocessOutput {
                     preprocessed_source: source,
-                    meta: PreprocessorMetaData { imports, .. },
+                    ..
                 }) = composer
                     .preprocessor
                     .preprocess(raw_source, defs, composer.validate)
                 else {
-                    return Default::default();
-                };
-
-                let Ok(source) = composer.substitute_shader_string(&source, &imports) else {
                     return Default::default();
                 };
 
@@ -77,14 +70,18 @@ pub struct ComposerError {
 
 #[derive(Debug, Error)]
 pub enum ComposerErrorInner {
+    #[error("{0}")]
+    ImportParseError(String, usize),
     #[error("required import '{0}' not found")]
     ImportNotFound(String, usize),
     #[error("{0}")]
     WgslParseError(naga::front::wgsl::ParseError),
+    #[cfg(feature = "glsl")]
     #[error("{0:?}")]
     GlslParseError(Vec<naga::front::glsl::Error>),
     #[error("naga_oil bug, please file a report: failed to convert imported module IR back into WGSL for use with WGSL shaders: {0}")]
     WgslBackError(naga::back::wgsl::Error),
+    #[cfg(feature = "glsl")]
     #[error("naga_oil bug, please file a report: failed to convert imported module IR back into GLSL for use with GLSL shaders: {0}")]
     GlslBackError(naga::back::glsl::Error),
     #[error("naga_oil bug, please file a report: composer failed to build a valid header: {0}")]
@@ -215,6 +212,10 @@ impl ComposerError {
                 vec![Label::primary((), *pos..*pos)],
                 vec![format!("missing import '{msg}'")],
             ),
+            ComposerErrorInner::ImportParseError(msg, pos) => (
+                vec![Label::primary((), *pos..*pos)],
+                vec![format!("invalid import spec: '{msg}'")],
+            ),
             ComposerErrorInner::WgslParseError(e) => (
                 e.labels()
                     .map(|(range, msg)| {
@@ -223,6 +224,7 @@ impl ComposerError {
                     .collect(),
                 vec![e.message().to_owned()],
             ),
+            #[cfg(feature = "glsl")]
             ComposerErrorInner::GlslParseError(e) => (
                 e.iter()
                     .map(|naga::front::glsl::Error { kind, meta }| {
@@ -247,6 +249,7 @@ impl ComposerError {
             ComposerErrorInner::WgslBackError(e) => {
                 return format!("{path}: wgsl back error: {e}");
             }
+            #[cfg(feature = "glsl")]
             ComposerErrorInner::GlslBackError(e) => {
                 return format!("{path}: glsl back error: {e}");
             }
