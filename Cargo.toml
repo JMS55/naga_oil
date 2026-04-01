@@ -19,7 +19,9 @@ allow_deprecated = []
 
 [dependencies]
 # naga = { version = "29", features = ["wgsl-in", "wgsl-out", "termcolor"] }
-naga = { git = "https://github.com/JMS55/wgpu", branch = "proper-loops", features = ["wgsl-in", "wgsl-out", "termcolor"] }
+# naga = { git = "https://github.com/JMS55/wgpu", branch = "proper-loops", features = ["wgsl-in", "wgsl-out", "termcolor"] }
+naga = { git = "https://github.com/elabajaba/wgpu", branch = "proper-loops-temp", features = ["wgsl-in", "wgsl-out", "termcolor"] }
+# naga = { path = "E:/programming/wgpu/naga", features = ["naga-ir"] }
 tracing = "0.1"
 regex = "1.8"
 thiserror = "2.0"
@@ -31,6 +33,8 @@ indexmap = "2"
 
 [dev-dependencies]
 # wgpu = { version = "29", features = ["naga-ir"] }
-wgpu = { git = "https://github.com/JMS55/wgpu", branch = "proper-loops", features = ["naga-ir"] }
+# wgpu = { git = "https://github.com/JMS55/wgpu", branch = "proper-loops", features = ["naga-ir"] }
+wgpu = { git = "https://github.com/elabajaba/wgpu", branch = "proper-loops-temp", features = ["naga-ir"] }
+# wgpu = { path = "E:/programming/wgpu/wgpu", features = ["naga-ir"] }
 futures-lite = "2"
 tracing-subscriber = { version = "0.3", features = ["std", "fmt"] }
