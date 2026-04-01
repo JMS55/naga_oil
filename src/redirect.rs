@@ -58,6 +58,26 @@ impl Redirector {
                     Self::redirect_block(body, original, new);
                     Self::redirect_block(continuing, original, new);
                 }
+                Statement::ForLoop {
+                    initializer,
+                    condition: _,
+                    condition_block,
+                    update,
+                    body,
+                } => {
+                    Self::redirect_block(initializer, original, new);
+                    Self::redirect_block(condition_block, original, new);
+                    Self::redirect_block(update, original, new);
+                    Self::redirect_block(body, original, new);
+                }
+                Statement::WhileLoop {
+                    condition: _,
+                    condition_block,
+                    body,
+                } => {
+                    Self::redirect_block(condition_block, original, new);
+                    Self::redirect_block(body, original, new);
+                }
                 Statement::Emit(_)
                 | Statement::Break
                 | Statement::Continue

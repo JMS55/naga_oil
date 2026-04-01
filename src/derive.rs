@@ -369,6 +369,31 @@ impl<'a> DerivedModule<'a> {
                         continuing: map_block!(continuing),
                         break_if: map_expr_opt!(break_if),
                     },
+                    Statement::ForLoop {
+                        initializer,
+                        condition,
+                        condition_block,
+                        update,
+                        body,
+                    } => Statement::ForLoop {
+                        initializer: map_block!(initializer),
+                        condition: match condition {
+                            Some(condition) => Some(map_expr!(condition)),
+                            None => None,
+                        },
+                        condition_block: map_block!(condition_block),
+                        update: map_block!(update),
+                        body: map_block!(body),
+                    },
+                    Statement::WhileLoop {
+                        condition,
+                        condition_block,
+                        body,
+                    } => Statement::WhileLoop {
+                        condition: map_expr!(condition),
+                        condition_block: map_block!(condition_block),
+                        body: map_block!(body),
+                    },
                     Statement::Emit(exprs) => {
                         // iterate once to add expressions that should NOT be part of the emit statement
                         for expr in exprs.clone() {
