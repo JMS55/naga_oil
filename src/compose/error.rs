@@ -10,7 +10,7 @@ use thiserror::Error;
 use tracing::trace;
 
 use super::{preprocess::PreprocessOutput, Composer, ShaderDefValue};
-use crate::{compose::SPAN_SHIFT, redirect::RedirectError};
+use crate::redirect::RedirectError;
 
 #[derive(Debug)]
 pub enum ErrSource {
@@ -181,8 +181,7 @@ impl ComposerError {
         trace!("source offset: {}", source_offset);
 
         let map_span = |rng: Range<usize>| -> Range<usize> {
-            ((rng.start & ((1 << SPAN_SHIFT) - 1)).saturating_sub(source_offset))
-                ..((rng.end & ((1 << SPAN_SHIFT) - 1)).saturating_sub(source_offset))
+            rng.start.saturating_sub(source_offset)..rng.end.saturating_sub(source_offset)
         };
 
         let files = SimpleFile::new(path, source.as_str());

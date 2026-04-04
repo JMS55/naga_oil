@@ -37,7 +37,7 @@ mod test {
                 ..Default::default()
             })
             .unwrap();
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/simple/top.wgsl"),
                 file_path: "tests/simple/top.wgsl",
@@ -77,7 +77,7 @@ mod test {
             .map(|i| (format!("a{i}"), ShaderDefValue::Bool(true)))
             .collect::<HashMap<_, _>>();
 
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/big_shaderdefs/top.wgsl"),
                 file_path: "tests/big_shaderdefs/top.wgsl",
@@ -127,7 +127,7 @@ mod test {
                 ..Default::default()
             })
             .unwrap();
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/dup_import/top.wgsl"),
                 file_path: "tests/dup_import/top.wgsl",
@@ -300,7 +300,7 @@ mod test {
             })
             .unwrap();
 
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/glsl/top.wgsl"),
                 file_path: "tests/glsl/top.wgsl",
@@ -336,7 +336,7 @@ mod test {
             })
             .unwrap();
 
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/glsl/top.glsl"),
                 file_path: "tests/glsl/top.glsl",
@@ -386,7 +386,7 @@ mod test {
             })
             .unwrap();
 
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/call_entrypoint/top.wgsl"),
                 file_path: "tests/call_entrypoint/top.wgsl",
@@ -420,7 +420,7 @@ mod test {
             })
             .unwrap();
 
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/overrides/top.wgsl"),
                 file_path: "tests/overrides/top.wgsl",
@@ -504,7 +504,7 @@ mod test {
             .unwrap();
 
         // test as shader
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/add_imports/top.wgsl"),
                 file_path: "tests/add_imports/top.wgsl",
@@ -567,7 +567,7 @@ mod test {
 
         #[cfg(feature = "override_any")]
         {
-            let module = module.unwrap();
+            let (module, _) = module.unwrap();
             let info = composer.create_validator().validate(&module).unwrap();
             let wgsl = naga::back::wgsl::write_string(
                 &module,
@@ -608,7 +608,7 @@ mod test {
                 ..Default::default()
             })
             .unwrap();
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/const_in_decl/top.wgsl"),
                 file_path: "tests/const_in_decl/top.wgsl",
@@ -646,7 +646,7 @@ mod test {
                 ..Default::default()
             })
             .unwrap();
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/glsl_const_import/top.glsl"),
                 file_path: "tests/glsl_const_import/top.glsl",
@@ -683,7 +683,7 @@ mod test {
                 ..Default::default()
             })
             .unwrap();
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/glsl_const_import/top.wgsl"),
                 file_path: "tests/glsl_const_import/top.wgsl",
@@ -717,7 +717,7 @@ mod test {
                 ..Default::default()
             })
             .unwrap();
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/glsl_const_import/top.glsl"),
                 file_path: "tests/glsl_const_import/top.glsl",
@@ -754,7 +754,7 @@ mod test {
             })
             .unwrap();
 
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/item_import/top.wgsl"),
                 file_path: "tests/item_import/top.wgsl",
@@ -816,7 +816,7 @@ mod test {
                 ..Default::default()
             })
             .unwrap();
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/invalid_identifiers/top_valid.wgsl"),
                 file_path: "tests/invalid_identifiers/top_valid.wgsl",
@@ -874,7 +874,7 @@ mod test {
             })
             .unwrap();
 
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/dup_struct_import/top.wgsl"),
                 file_path: "tests/dup_struct_import/top.wgsl",
@@ -912,7 +912,7 @@ mod test {
             })
             .unwrap();
 
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/item_sub_point/top.wgsl"),
                 file_path: "tests/item_sub_point/top.wgsl",
@@ -954,7 +954,7 @@ mod test {
             })
             .unwrap();
 
-        let module_a = composer
+        let (module_a, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/conditional_import/top.wgsl"),
                 file_path: "tests/conditional_import/top.wgsl",
@@ -977,7 +977,7 @@ mod test {
 
         output_eq!(wgsl, "tests/expected/conditional_import_a.txt");
 
-        let module_b = composer
+        let (module_b, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/conditional_import/top.wgsl"),
                 file_path: "tests/conditional_import/top.wgsl",
@@ -1167,7 +1167,7 @@ mod test {
             })
             .unwrap();
 
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/quoted_dup/top.wgsl"),
                 file_path: "tests/quoted_dup/top.wgsl",
@@ -1201,7 +1201,7 @@ mod test {
                 ..Default::default()
             })
             .unwrap();
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/use_shared_global/top.wgsl"),
                 file_path: "tests/use_shared_global/top.wgsl",
@@ -1235,7 +1235,7 @@ mod test {
                 ..Default::default()
             })
             .unwrap();
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/problematic_expressions/top.wgsl"),
                 file_path: "tests/problematic_expressions/top.wgsl",
@@ -1275,7 +1275,7 @@ mod test {
             assert_eq!(test_shader(&mut composer), 28.0);
         }
 
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/atomics/top.wgsl"),
                 file_path: "tests/atomics/top.wgsl",
@@ -1311,7 +1311,7 @@ mod test {
             })
             .unwrap();
 
-        let _module = composer
+        let (_module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/raycast/top.wgsl"),
                 file_path: "tests/raycast/top.wgsl",
@@ -1374,7 +1374,7 @@ mod test {
             assert_eq!(test_shader(&mut composer), 28.0);
         }
 
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/diagnostic_filters/top.wgsl"),
                 file_path: "tests/diagnostic_filters/top.wgsl",
@@ -1480,7 +1480,7 @@ mod test {
     // actually run a shader and extract the result
     // needs the composer to contain a module called "test_module", with a function called "entry_point" returning an f32.
     fn test_shader(composer: &mut Composer) -> f32 {
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/compute_test.wgsl"),
                 file_path: "tests/compute_test.wgsl",
@@ -1606,7 +1606,7 @@ mod test {
             .capabilities
             .set(Capabilities::DUAL_SOURCE_BLENDING, true);
 
-        let module = composer
+        let (module, _) = composer
             .make_naga_module(NagaModuleDescriptor {
                 source: include_str!("tests/dual_source_blending/blending.wgsl"),
                 file_path: "tests/dual_source_blending/blending.wgsl",

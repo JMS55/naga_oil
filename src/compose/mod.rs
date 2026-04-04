@@ -251,6 +251,9 @@ pub struct ComposableModule {
     header_ir: naga::Module,
     // character offset of the start of the owned module string
     start_offset: usize,
+    /// The full source string (header + module source) that was parsed to produce `module_ir`.
+    /// Spans in `module_ir` are byte offsets into this string.
+    source_string: String,
 }
 
 // data used to build a ComposableModule
@@ -273,8 +276,6 @@ pub struct ComposableModuleDefinition {
     additional_imports: Vec<ImportDefinition>,
     // built composable modules for a given set of shader defs
     modules: HashMap<ModuleKey, ComposableModule>,
-    // used in spans when this module is included
-    module_index: usize,
     // any directives used in this module
     wgsl_directives: WgslDirectives,
 }
@@ -322,7 +323,6 @@ pub struct ImportDefWithOffset {
 pub struct Composer {
     pub validate: bool,
     pub module_sets: HashMap<String, ComposableModuleDefinition>,
-    pub module_index: HashMap<usize, String>,
     pub capabilities: naga::valid::Capabilities,
     preprocessor: Preprocessor,
     check_decoration_regex: Regex,
@@ -334,11 +334,6 @@ pub struct Composer {
     auto_binding_index: u32,
 }
 
-// shift for module index
-// 21 gives
-//   max size for shader of 2m characters
-//   max 2048 modules
-const SPAN_SHIFT: usize = 21;
 
 impl Default for Composer {
     fn default() -> Self {
@@ -346,7 +341,6 @@ impl Default for Composer {
             validate: true,
             capabilities: Default::default(),
             module_sets: Default::default(),
-            module_index: Default::default(),
             preprocessor: Preprocessor::default(),
             check_decoration_regex: Regex::new(
                 format!(
@@ -404,6 +398,9 @@ struct IrBuildResult {
     module: naga::Module,
     start_offset: usize,
     override_functions: IndexMap<String, Vec<String>>,
+    /// The full source string (header + module source) that was parsed to produce `module`.
+    /// Spans in `module` are byte offsets into this string.
+    source_string: String,
 }
 
 impl Composer {
@@ -601,6 +598,8 @@ impl Composer {
         let mut override_functions: IndexMap<String, Vec<String>> = IndexMap::default();
         let mut added_imports: HashSet<String> = HashSet::new();
         let mut header_module = DerivedModule::default();
+        let mut header_combined_source = String::new();
+        let mut header_source_ranges = Vec::new();
 
         for import in imports {
             if added_imports.contains(&import.import) {
@@ -613,6 +612,8 @@ impl Composer {
                 shader_defs,
                 true,
                 &mut added_imports,
+                &mut header_combined_source,
+                &mut header_source_ranges,
             );
 
             // // we must have ensured these exist with Composer::ensure_imports()
@@ -704,6 +705,7 @@ impl Composer {
             module,
             start_offset,
             override_functions,
+            source_string: module_string,
         })
     }
 
@@ -978,6 +980,7 @@ impl Composer {
             module: mut source_ir,
             start_offset,
             mut override_functions,
+            source_string,
         } = self.create_module_ir(
             &module_definition.name,
             source,
@@ -1237,6 +1240,7 @@ impl Composer {
             module_ir,
             header_ir,
             start_offset,
+            source_string,
         };
 
         Ok(composable_module)
@@ -1331,6 +1335,8 @@ impl Composer {
         shader_defs: &HashMap<String, ShaderDefValue>,
         header: bool,
         already_added: &mut HashSet<String>,
+        combined_source: &mut String,
+        source_ranges: &mut Vec<(usize, String)>,
     ) {
         if already_added.contains(&import.import) {
             trace!("skipping {}, already added", import.import);
@@ -1341,16 +1347,22 @@ impl Composer {
         let module = import_module_set.get_module(shader_defs).unwrap();
 
         for import in &module.imports {
-            self.add_import(derived, import, shader_defs, header, already_added);
+            self.add_import(
+                derived,
+                import,
+                shader_defs,
+                header,
+                already_added,
+                combined_source,
+                source_ranges,
+            );
         }
 
-        Self::add_composable_data(
-            derived,
-            module,
-            Some(&import.items),
-            import_module_set.module_index << SPAN_SHIFT,
-            header,
-        );
+        let span_offset = combined_source.len();
+        source_ranges.push((span_offset, import.import.clone()));
+        combined_source.push_str(&module.source_string);
+
+        Self::add_composable_data(derived, module, Some(&import.items), span_offset, header);
     }
 
     fn ensure_import(
@@ -1601,10 +1613,6 @@ impl Composer {
         // remove defs that are already specified through our imports
         effective_defs.retain(|name| !shader_defs.contains_key(name));
 
-        // can't gracefully report errors for more modules. perhaps this should be a warning
-        assert!((self.module_sets.len() as u32) < u32::MAX >> SPAN_SHIFT);
-        let module_index = self.module_sets.len() + 1;
-
         let module_set = ComposableModuleDefinition {
             name: module_name.clone(),
             sanitized_source: cleaned_source,
@@ -1614,7 +1622,6 @@ impl Composer {
             all_imports: imports.into_iter().map(|id| id.definition.import).collect(),
             additional_imports,
             shader_defs,
-            module_index,
             modules: Default::default(),
             wgsl_directives,
         };
@@ -1623,7 +1630,6 @@ impl Composer {
         self.remove_composable_module(&module_name);
 
         self.module_sets.insert(module_name.clone(), module_set);
-        self.module_index.insert(module_index, module_name.clone());
         Ok(self.module_sets.get(&module_name).unwrap())
     }
 
@@ -1649,10 +1655,15 @@ impl Composer {
     }
 
     /// build a naga shader module
+    ///
+    /// Returns the composed module and a combined source string.
+    /// Spans in the module are valid byte offsets into the combined source string,
+    /// making it suitable for use with naga's SPIR-V backend debug info
+    /// (`naga::back::spv::DebugInfo`).
     pub fn make_naga_module(
         &mut self,
         desc: NagaModuleDescriptor,
-    ) -> Result<naga::Module, ComposerError> {
+    ) -> Result<(naga::Module, String), ComposerError> {
         let NagaModuleDescriptor {
             source,
             file_path,
@@ -1756,7 +1767,6 @@ impl Composer {
             sanitized_source: cleaned_source.clone(),
             language: shader_type.into(),
             file_path: file_path.to_owned(),
-            module_index: 0,
             additional_imports: additional_imports.to_vec(),
             // we don't care about these for creating a top-level module
             effective_defs: Default::default(),
@@ -1801,6 +1811,8 @@ impl Composer {
             })?;
 
         let mut derived = DerivedModule::default();
+        let mut combined_source = String::new();
+        let mut source_ranges: Vec<(usize, String)> = Vec::new();
 
         let mut already_added = Default::default();
         for import in &composable.imports {
@@ -1810,10 +1822,15 @@ impl Composer {
                 &shader_defs,
                 false,
                 &mut already_added,
+                &mut combined_source,
+                &mut source_ranges,
             );
         }
 
-        Self::add_composable_data(&mut derived, &composable, None, 0, false);
+        let top_level_offset = combined_source.len();
+        combined_source.push_str(&composable.source_string);
+
+        Self::add_composable_data(&mut derived, &composable, None, top_level_offset, false);
 
         let stage = match shader_type {
             #[cfg(feature = "glsl")]
@@ -1824,7 +1841,7 @@ impl Composer {
         };
 
         let mut entry_points = Vec::default();
-        derived.set_shader_source(&composable.module_ir, 0);
+        derived.set_shader_source(&composable.module_ir, top_level_offset);
         for ep in &composable.module_ir.entry_points {
             let mapped_func = derived.localize_function(&ep.function);
             entry_points.push(EntryPoint {
@@ -1860,7 +1877,7 @@ impl Composer {
                             source: ErrSource::Constructing {
                                 path: file_path.to_owned(),
                                 source: preprocessed_source.clone(),
-                                offset: composable.start_offset,
+                                offset: top_level_offset + composable.start_offset,
                             },
                         })?;
                     omit.insert(replacement.clone());
@@ -1873,7 +1890,7 @@ impl Composer {
                 source: ErrSource::Constructing {
                     path: file_path.to_owned(),
                     source: preprocessed_source.clone(),
-                    offset: composable.start_offset,
+                    offset: top_level_offset + composable.start_offset,
                 },
             })?;
         }
@@ -1882,40 +1899,47 @@ impl Composer {
         if self.validate {
             let info = self.create_validator().validate(&naga_module);
             match info {
-                Ok(_) => Ok(naga_module),
+                Ok(_) => Ok((naga_module, combined_source)),
                 Err(e) => {
                     let original_span = e.spans().last();
                     let err_source = match original_span.and_then(|(span, _)| span.to_range()) {
                         Some(rng) => {
-                            let module_index = rng.start >> SPAN_SHIFT;
-                            match module_index {
-                                0 => ErrSource::Constructing {
-                                    path: file_path.to_owned(),
-                                    source: preprocessed_source.clone(),
-                                    offset: composable.start_offset,
-                                },
-                                _ => {
-                                    let module_name =
-                                        self.module_index.get(&module_index).unwrap().clone();
+                            // find which module this span belongs to by checking source ranges
+                            let mut found = None;
+                            for (global_start, module_name) in source_ranges.iter().rev() {
+                                if rng.start >= *global_start {
+                                    found = Some((global_start, module_name));
+                                    break;
+                                }
+                            }
+                            match found {
+                                Some((global_start, module_name))
+                                    if rng.start < top_level_offset =>
+                                {
                                     let offset = self
                                         .module_sets
-                                        .get(&module_name)
+                                        .get(module_name)
                                         .unwrap()
                                         .get_module(&shader_defs)
                                         .unwrap()
                                         .start_offset;
                                     ErrSource::Module {
-                                        name: module_name,
-                                        offset,
+                                        name: module_name.clone(),
+                                        offset: global_start + offset,
                                         defs: shader_defs.clone(),
                                     }
                                 }
+                                _ => ErrSource::Constructing {
+                                    path: file_path.to_owned(),
+                                    source: preprocessed_source.clone(),
+                                    offset: top_level_offset + composable.start_offset,
+                                },
                             }
                         }
                         None => ErrSource::Constructing {
                             path: file_path.to_owned(),
                             source: preprocessed_source.clone(),
-                            offset: composable.start_offset,
+                            offset: top_level_offset + composable.start_offset,
                         },
                     };
 
@@ -1926,7 +1950,7 @@ impl Composer {
                 }
             }
         } else {
-            Ok(naga_module)
+            Ok((naga_module, combined_source))
         }
     }
 }
