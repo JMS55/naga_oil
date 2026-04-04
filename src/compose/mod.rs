@@ -254,6 +254,10 @@ pub struct ComposableModule {
     /// The full source string (header + module source) that was parsed to produce `module_ir`.
     /// Spans in `module_ir` are byte offsets into this string.
     source_string: String,
+    /// A debug-friendly version of `source_string` with original preprocessor directives
+    /// (`#import`, `#define_import_path`, etc.) preserved instead of being replaced with spaces.
+    /// Same byte length as `source_string`, so spans are still valid.
+    debug_source_string: String,
 }
 
 // data used to build a ComposableModule
@@ -401,6 +405,8 @@ struct IrBuildResult {
     /// The full source string (header + module source) that was parsed to produce `module`.
     /// Spans in `module` are byte offsets into this string.
     source_string: String,
+    /// Debug-friendly version with original directives preserved.
+    debug_source_string: String,
 }
 
 impl Composer {
@@ -582,6 +588,7 @@ impl Composer {
         &self,
         name: &str,
         source: String,
+        original_source: &str,
         language: ShaderLanguage,
         imports: &[ImportDefinition],
         shader_defs: &HashMap<String, ShaderDefValue>,
@@ -658,6 +665,32 @@ impl Composer {
 
         let start_offset = module_string.len();
 
+        // Build debug source string: header + source with directive lines restored.
+        // The preprocessor replaces directive lines (#import, #define_import_path, etc.)
+        // with same-length whitespace. We restore those lines from the original source
+        // so they're visible in debug tools, while keeping code lines from the
+        // preprocessed version (which has correct import identifier substitution).
+        let debug_source: String = source
+            .lines()
+            .zip(original_source.lines())
+            .map(|(processed, original)| {
+                if processed.trim().is_empty() && !original.trim().is_empty() {
+                    // Directive line: restore original, pad/truncate to match length
+                    let plen = processed.len();
+                    let mut line = original[..original.len().min(plen)].to_string();
+                    while line.len() < plen {
+                        line.push(' ');
+                    }
+                    line
+                } else {
+                    processed.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut debug_module_string = module_string.clone();
+        debug_module_string.push_str(&debug_source);
+
         module_string.push_str(&source);
 
         trace!(
@@ -706,6 +739,7 @@ impl Composer {
             start_offset,
             override_functions,
             source_string: module_string,
+            debug_source_string: debug_module_string,
         })
     }
 
@@ -981,9 +1015,11 @@ impl Composer {
             start_offset,
             mut override_functions,
             source_string,
+            debug_source_string,
         } = self.create_module_ir(
             &module_definition.name,
             source,
+            &module_definition.sanitized_source,
             module_definition.language,
             &imports,
             shader_defs,
@@ -1241,6 +1277,7 @@ impl Composer {
             header_ir,
             start_offset,
             source_string,
+            debug_source_string,
         };
 
         Ok(composable_module)
@@ -1360,7 +1397,7 @@ impl Composer {
 
         let span_offset = combined_source.len();
         source_ranges.push((span_offset, import.import.clone()));
-        combined_source.push_str(&module.source_string);
+        combined_source.push_str(&module.debug_source_string);
 
         Self::add_composable_data(derived, module, Some(&import.items), span_offset, header);
     }
@@ -1828,7 +1865,7 @@ impl Composer {
         }
 
         let top_level_offset = combined_source.len();
-        combined_source.push_str(&composable.source_string);
+        combined_source.push_str(&composable.debug_source_string);
 
         Self::add_composable_data(&mut derived, &composable, None, top_level_offset, false);
 
