@@ -183,7 +183,7 @@ fn test_composer_compile(n: usize, composer: &mut Composer) {
             })
             .unwrap();
         let _desc = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            source: wgpu::ShaderSource::Naga(Cow::Owned(module)),
+            source: wgpu::ShaderSource::Naga(Cow::Owned(module), None),
             label: None,
         });
     }

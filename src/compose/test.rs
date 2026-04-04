@@ -1502,7 +1502,7 @@ mod test {
             .unwrap();
 
         let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            source: wgpu::ShaderSource::Naga(Cow::Owned(module)),
+            source: wgpu::ShaderSource::Naga(Cow::Owned(module), None),
             label: None,
         });
 
@@ -1626,5 +1626,79 @@ mod test {
         // f.write_all(wgsl.as_bytes()).unwrap();
         // drop(f);
         output_eq!(wgsl, "tests/expected/wgsl_dual_source_blending.txt");
+    }
+
+    #[test]
+    fn combined_source_spans_valid() {
+        // Test that spans in the composed module are valid byte offsets
+        // into the combined source string returned by make_naga_module.
+        let mut composer = Composer::default();
+
+        composer
+            .add_composable_module(ComposableModuleDescriptor {
+                source: include_str!("tests/simple/inc.wgsl"),
+                file_path: "tests/simple/inc.wgsl",
+                ..Default::default()
+            })
+            .unwrap();
+        let (module, combined_source) = composer
+            .make_naga_module(NagaModuleDescriptor {
+                source: include_str!("tests/simple/top.wgsl"),
+                file_path: "tests/simple/top.wgsl",
+                ..Default::default()
+            })
+            .unwrap();
+
+        assert!(!combined_source.is_empty(), "combined source should not be empty");
+
+        // Check that all function body statement spans are valid and defined
+        let source_len = combined_source.len();
+        let mut defined_span_count = 0usize;
+        for (_h, f) in module.functions.iter() {
+            for (_, span) in f.body.span_iter() {
+                if span.is_defined() {
+                    defined_span_count += 1;
+                    let range = span.to_range().unwrap();
+                    assert!(
+                        range.end <= source_len,
+                        "function {:?}: span {:?} exceeds combined source length {}",
+                        f.name, range, source_len
+                    );
+                    // Verify span.location doesn't panic
+                    let _loc = span.location(&combined_source);
+                }
+            }
+        }
+
+        // Check entry point spans
+        for ep in &module.entry_points {
+            for (_, span) in ep.function.body.span_iter() {
+                if span.is_defined() {
+                    defined_span_count += 1;
+                    let range = span.to_range().unwrap();
+                    assert!(
+                        range.end <= source_len,
+                        "entry point {:?}: span {:?} exceeds combined source length {}",
+                        ep.name, range, source_len
+                    );
+                    let _loc = span.location(&combined_source);
+                }
+            }
+            // Also check expression spans
+            for (h, _) in ep.function.expressions.iter() {
+                let span = ep.function.expressions.get_span(h);
+                if span.is_defined() {
+                    defined_span_count += 1;
+                    let range = span.to_range().unwrap();
+                    assert!(
+                        range.end <= source_len,
+                        "entry point {:?} expression: span {:?} exceeds combined source length {}",
+                        ep.name, range, source_len
+                    );
+                }
+            }
+        }
+
+        assert!(defined_span_count > 0, "expected some defined spans in composed module, got none");
     }
 }
