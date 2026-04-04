@@ -251,13 +251,10 @@ pub struct ComposableModule {
     header_ir: naga::Module,
     // character offset of the start of the owned module string
     start_offset: usize,
-    /// The full source string (header + module source) that was parsed to produce `module_ir`.
-    /// Spans in `module_ir` are byte offsets into this string.
+    /// The full source string (header + module source) with original preprocessor directives
+    /// (`#import`, `#define_import_path`, etc.) preserved for debug display.
+    /// Same byte length as the parsed source, so spans are still valid.
     source_string: String,
-    /// A debug-friendly version of `source_string` with original preprocessor directives
-    /// (`#import`, `#define_import_path`, etc.) preserved instead of being replaced with spaces.
-    /// Same byte length as `source_string`, so spans are still valid.
-    debug_source_string: String,
 }
 
 // data used to build a ComposableModule
@@ -404,9 +401,8 @@ struct IrBuildResult {
     override_functions: IndexMap<String, Vec<String>>,
     /// The full source string (header + module source) that was parsed to produce `module`.
     /// Spans in `module` are byte offsets into this string.
+    /// Original preprocessor directives are preserved for debug display.
     source_string: String,
-    /// Debug-friendly version with original directives preserved.
-    debug_source_string: String,
 }
 
 impl Composer {
@@ -738,8 +734,7 @@ impl Composer {
             module,
             start_offset,
             override_functions,
-            source_string: module_string,
-            debug_source_string: debug_module_string,
+            source_string: debug_module_string,
         })
     }
 
@@ -1015,7 +1010,6 @@ impl Composer {
             start_offset,
             mut override_functions,
             source_string,
-            debug_source_string,
         } = self.create_module_ir(
             &module_definition.name,
             source,
@@ -1277,7 +1271,6 @@ impl Composer {
             header_ir,
             start_offset,
             source_string,
-            debug_source_string,
         };
 
         Ok(composable_module)
@@ -1397,7 +1390,7 @@ impl Composer {
 
         let span_offset = combined_source.len();
         source_ranges.push((span_offset, import.import.clone()));
-        combined_source.push_str(&module.debug_source_string);
+        combined_source.push_str(&module.source_string);
 
         Self::add_composable_data(derived, module, Some(&import.items), span_offset, header);
     }
@@ -1865,7 +1858,7 @@ impl Composer {
         }
 
         let top_level_offset = combined_source.len();
-        combined_source.push_str(&composable.debug_source_string);
+        combined_source.push_str(&composable.source_string);
 
         Self::add_composable_data(&mut derived, &composable, None, top_level_offset, false);
 
