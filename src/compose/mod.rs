@@ -661,29 +661,46 @@ impl Composer {
 
         let start_offset = module_string.len();
 
-        // Build debug source string: header + source with directive lines restored.
-        // The preprocessor replaces directive lines (#import, #define_import_path, etc.)
-        // with same-length whitespace. We restore those lines from the original source
-        // so they're visible in debug tools, while keeping code lines from the
-        // preprocessed version (which has correct import identifier substitution).
-        let debug_source: String = source
-            .lines()
-            .zip(original_source.lines())
-            .map(|(processed, original)| {
-                if processed.trim().is_empty() && !original.trim().is_empty() {
-                    // Directive line: restore original, pad/truncate to match length
-                    let plen = processed.len();
-                    let mut line = original[..original.len().min(plen)].to_string();
-                    while line.len() < plen {
-                        line.push(' ');
-                    }
-                    line
-                } else {
-                    processed.to_string()
+        // Build debug source string: start from a copy of the preprocessed source,
+        // then overlay original directive lines in-place to preserve exact byte offsets.
+        // The preprocessor replaces directive lines with same-length whitespace, so we
+        // can safely restore the original text without changing any byte positions.
+        let mut debug_source = source.to_string();
+        {
+            let mut src_offset = 0usize;
+            let mut orig_offset = 0usize;
+            let src_bytes = source.as_bytes();
+            let orig_bytes = original_source.as_bytes();
+            while src_offset < src_bytes.len() && orig_offset < orig_bytes.len() {
+                // Find end of line in both strings
+                let src_line_end = src_bytes[src_offset..]
+                    .iter()
+                    .position(|&b| b == b'\n')
+                    .map_or(src_bytes.len(), |p| src_offset + p);
+                let orig_line_end = orig_bytes[orig_offset..]
+                    .iter()
+                    .position(|&b| b == b'\n')
+                    .map_or(orig_bytes.len(), |p| orig_offset + p);
+
+                let src_line = &source[src_offset..src_line_end];
+                let orig_line = &original_source[orig_offset..orig_line_end];
+
+                // If the processed line is all whitespace but original has content,
+                // overwrite with original (same byte length guaranteed by preprocessor)
+                if src_line.trim().is_empty()
+                    && !orig_line.trim().is_empty()
+                    && src_line.len() == orig_line.len()
+                {
+                    debug_source.replace_range(src_offset..src_line_end, orig_line);
                 }
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+
+                // Advance past line + newline
+                src_offset = src_line_end + 1;
+                orig_offset = orig_line_end + 1;
+            }
+        }
+        debug_assert_eq!(debug_source.len(), source.len());
+
         let mut debug_module_string = module_string.clone();
         debug_module_string.push_str(&debug_source);
 
